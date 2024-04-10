@@ -33,7 +33,7 @@ class LLRPMessage {
             this.setParameter(data.parameter);
         }
         else {
-            this.setParameter(new Buffer(0));
+            this.setParameter(new Buffer.alloc(0));
         }
         if (typeof data.version !== 'undefined') {
             this.version.value = data.version;

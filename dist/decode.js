@@ -55,8 +55,7 @@ exports.decodeParameter = (buffer, returnObject = []) => {
         // since it is not present in a TV encoded buffer.
         value = buffer.slice(1, length); // the value in a TV starts from the second octet up the entire length of the buffer.
         reserved = 1; // reserved is set as 1 on the first octet's most significant bit.
-    }
-    else {
+    } else {
         type = ((buffer[0] & 3) << 8) | buffer[1]; // type is the first 2 bits of the first octet and the second octet.
         length = buffer.readUInt16BE(2); // each TLV has length in the third and fourth octet.
         value = buffer.slice(4, length); // the value in a TLV starts from the fifth octet up the entire length of the buffer.

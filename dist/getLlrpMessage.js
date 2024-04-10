@@ -11,10 +11,10 @@ const messages_1 = require("./messages");
 const encode_1 = require("./encode");
 const messagesType_1 = require("./interfaces/messagesType");
 const vendorId = rospecConstants_1.rospecConstants.impinjVendorId;
-const MAX_RFID_POWER_FOR_THE_EU = 31.50; // dBm
+const MAX_RFID_POWER = 32.5; // dBm
 class GetLlrpMessage {
     static resetConfigurationToFactoryDefaults() {
-        return this.makeMessage(messagesType_1.MessagesType.SET_READER_CONFIG, 1205, new Buffer([0x80]));
+        return this.makeMessage(messagesType_1.MessagesType.SET_READER_CONFIG, 1205, new Buffer.from([0x80]));
     }
     static setReaderConfig() {
         const holdEventsAndReportsUponReconnect = 0x80;
@@ -30,7 +30,7 @@ class GetLlrpMessage {
         const rOSpecStartTriggerParams = Buffer.allocUnsafe(5);
         rOSpecStartTriggerParams.writeUInt8(rospecConstants_1.rospecConstants.ROSpecStopTriggerType, 0);
         rOSpecStartTriggerParams.writeUInt32BE(rospecConstants_1.rospecConstants.DurationTriggerValue, 1);
-        const rOSpecStartTrigger = this.makeTLVParameter(parametersConstants_1.default.ROSpecStartTrigger, new Buffer([rospecConstants_1.rospecConstants.ROSpecStartTriggerType]));
+        const rOSpecStartTrigger = this.makeTLVParameter(parametersConstants_1.default.ROSpecStartTrigger, new Buffer.from([rospecConstants_1.rospecConstants.ROSpecStartTriggerType]));
         const rOSpecStopTrigger = this.makeTLVParameter(parametersConstants_1.default.ROSpecStopTrigger, rOSpecStartTriggerParams);
         const totalLengthRo = rOSpecStartTrigger.length + rOSpecStopTrigger.length;
         const rOBoundarySpec = this.makeTLVParameter(parametersConstants_1.default.ROBoundarySpec, Buffer.concat([rOSpecStartTrigger, rOSpecStopTrigger], totalLengthRo));
@@ -67,14 +67,14 @@ class GetLlrpMessage {
         aiSpecStopTriggerParams.writeUInt8(rospecConstants_1.rospecConstants.AISpecStopTriggerType, 0);
         aiSpecStopTriggerParams.writeUInt32BE(rospecConstants_1.rospecConstants.AISpecStopDurationTriggerValue, 1);
         const aiSpecStopTrigger = this.makeTLVParameter(parametersConstants_1.default.AISpecStopTrigger, aiSpecStopTriggerParams);
-        let antennaConfiguration = GetLlrpMessage.getAntennaConfig(0, this.getAntennaTransmitPowerIndex(MAX_RFID_POWER_FOR_THE_EU), 1, 1, 3, 4);
+        let antennaConfiguration = GetLlrpMessage.getAntennaConfig(0, this.getAntennaTransmitPowerIndex(MAX_RFID_POWER), 1, 1, 1, 3, 4, 0);
         const protocolId = rospecConstants_1.rospecConstants.EPCGlobalClass1Gen2;
         const inventoryParameterSpecParams = Buffer.allocUnsafe(3 + (antennaConfiguration.length * antennaCount));
         inventoryParameterSpecParams.writeUInt16BE(rospecConstants_1.rospecConstants.inventoryParameterSpecId, 0);
         inventoryParameterSpecParams.writeUInt8(protocolId, 2);
         if (сonfigEachAntenna) {
             parameters.antennasConfig.forEach((config, index) => {
-                antennaConfiguration = GetLlrpMessage.getAntennaConfig(config.number, this.getAntennaTransmitPowerIndex(config.power), parameters.channelIndex, parameters.inventorySearchMode, parameters.modeIndex, parameters.tagPopulation);
+                antennaConfiguration = GetLlrpMessage.getAntennaConfig(config.number, this.getAntennaTransmitPowerIndex(config.power), this.getAntennaReceiverSensitivityIndex(config.rxSensitivity), parameters.channelIndex, parameters.inventorySearchMode, parameters.modeIndex, parameters.tagPopulation, parameters.session);
                 antennaConfiguration.copy(inventoryParameterSpecParams, (index * antennaConfiguration.length) + 3);
             });
         }
@@ -204,9 +204,13 @@ class GetLlrpMessage {
         // TODO: get this power index from GET_READER_CAPABILITIES_RESPONSE
         return ((transmitPowerValue - 10.0) / 0.25) + 1;
     }
-    static getAntennaConfig(antennaId, transmitPowerValue, channelIndex, inventorySearchMode, modeIndex, tagPopulation) {
+    static getAntennaReceiverSensitivityIndex(ReceiverSensitivityValue) {
+        // TODO: get this sensitivity index from GET_READER_CAPABILITIES_RESPONSE
+        return Math.max((parseInt(ReceiverSensitivityValue) + 72), 1);
+    }
+    static getAntennaConfig(antennaId, transmitPowerValue, rxSensitivity, channelIndex, inventorySearchMode, modeIndex, tagPopulation, session) {
         const rfReceiverParam = Buffer.allocUnsafe(2);
-        rfReceiverParam.writeUInt16BE(rospecConstants_1.rospecConstants.rfSensitivity, 0);
+        rfReceiverParam.writeUInt16BE(rxSensitivity, 0);
         const rfReceiver = this.makeTLVParameter(parametersConstants_1.default.RFReceiver, rfReceiverParam);
         const rfTransmitterParams = Buffer.allocUnsafe(6);
         rfTransmitterParams.writeUInt16BE(rospecConstants_1.rospecConstants.hopTableId, 0);
@@ -218,7 +222,7 @@ class GetLlrpMessage {
         c1g2RfControlParams.writeUInt16BE(rospecConstants_1.rospecConstants.tari, 2);
         const c1g2RfControl = this.makeTLVParameter(parametersConstants_1.default.C1G2RFControl, c1g2RfControlParams);
         const c1g2SingulationControlParams = Buffer.allocUnsafe(7);
-        c1g2SingulationControlParams.writeUInt8(rospecConstants_1.rospecConstants.session, 0);
+        c1g2SingulationControlParams.writeUInt8(session, 0);
         c1g2SingulationControlParams.writeUInt16BE(tagPopulation, 1);
         c1g2SingulationControlParams.writeUInt32BE(rospecConstants_1.rospecConstants.tagTranzitTime, 3);
         const c1g2SingulationControl = this.makeTLVParameter(parametersConstants_1.default.C1G2SingulationControl, c1g2SingulationControlParams);

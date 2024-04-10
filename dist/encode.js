@@ -9,7 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.encodeMessage = function (llrpMessage) {
     // Create the buffer, should be the length of the message.
     // We will not account for slicing the data.
-    const buffer = new Buffer(llrpMessage.getLength());
+    const buffer = new Buffer.alloc(llrpMessage.getLength());
     // 3 bits of reserved value + 3 bits of version + 10 bits of Message Type | 32 bits of  Message Length | 32 bits of Message ID |
     buffer.writeUInt8((llrpMessage.getReserved() << 5) |
         (llrpMessage.getVersion() << 2) |
@@ -32,7 +32,7 @@ exports.encodeMessage = function (llrpMessage) {
 exports.encodeParameter = function (llrpParameter) {
     // Create the buffer, should be the length of the llrpParameter.
     // We will not account for slicing the data.
-    const buffer = new Buffer(llrpParameter.getLength());
+    const buffer = new Buffer.alloc(llrpParameter.getLength());
     // If llrpParameter uses TV encoding
     if (llrpParameter.getType() < 128) {
         // write the first octet, where the most significant bit of the octet is 1.

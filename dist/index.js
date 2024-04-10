@@ -51,16 +51,6 @@ class LLRP extends events_1.EventEmitter {
     connect() {
         this.connected = true;
         this.enableTransmitter = true;
-        // timeout after 60 seconds.
-        this.socket.setTimeout(60000, () => {
-            if (this.connected) {
-                this.log('Connection timeout');
-                process.nextTick(() => {
-                    this.connected = false;
-                    this.emit(llrp_1.RfidReaderEvent.Timeout, new Error('Connection timeout'));
-                });
-            }
-        });
         // connect with reader
         this.client = this.socket.connect(this.port, this.ipaddress, () => {
             this.log(`Connected to ${this.ipaddress}:${this.port}`);
@@ -72,7 +62,7 @@ class LLRP extends events_1.EventEmitter {
         this.client.on('data', (data) => {
             this.handleReceivedData(data);
         });
-        // // the reader or client has ended the connection.
+        // the reader or client has ended the connection.
         this.client.on('end', () => {
             // the session has ended
             this.log('client disconnected');
@@ -117,9 +107,9 @@ class LLRP extends events_1.EventEmitter {
         this.sendEnableRospec(true);
         return true;
     }
-    log(...args) {
+    log(args) {
         if (this.logger) {
-            this.logger.debug('LLRP:', ...args);
+            this.logger('LLRP >> ' + args);
         }
     }
     handleReceivedData(data) {
@@ -196,11 +186,12 @@ class LLRP extends events_1.EventEmitter {
         });
     }
     checkErrorInResponse(message) {
-        const param = decode_1.decodeParameter(message.getParameter());
-        if (!param) {
+        const parameters = message.getParameter();
+        if (parameters.length === 0 || (((parameters[0] & 3) << 8) | parameters[1]) !== parametersConstants_1.default.LLRPStatus) {
             return;
         }
-        param.forEach((decodedParameters) => {
+        const parametersKeyValue = decode_1.decodeParameter(parameters);
+        parametersKeyValue.forEach((decodedParameters) => {
             // read LLRPStatus Parameter only.
             if (decodedParameters.type === parametersConstants_1.default.LLRPStatus) {
                 const statusCode = decodedParameters.value.readInt16BE(0);
@@ -209,7 +200,11 @@ class LLRP extends events_1.EventEmitter {
                     const errorDescriptionBuffer = Buffer.allocUnsafe(errorDescriptionByteCount);
                     decodedParameters.value.copy(errorDescriptionBuffer, 0, 4, errorDescriptionByteCount + 4);
                     const errorDescription = `${errorDescriptionBuffer.toString('utf8')} in ${message.getTypeName()}`;
-                    this.emit(llrp_1.RfidReaderEvent.LlrpError, new Error(`${statusCode}: ${errorDescription}`));
+                    const error = {
+                        code: statusCode,
+                        description: errorDescription
+                    }
+                    this.emit(llrp_1.RfidReaderEvent.LlrpError, error);
                 }
                 this.lastLlrpStatusCode = statusCode;
             }
@@ -265,85 +260,13 @@ class LLRP extends events_1.EventEmitter {
         }
     }
     handleROAccessReport(message) {
+        const parameters = message.getParameter();
+        if (parameters.length === 0 || parameters[1] !== parametersConstants_1.default.TagReportData) {
+            return;
+        }
+        const tag = parameters.slice(5, 17).toString('hex');
         process.nextTick(() => {
-            // show current date.
-            this.log(`RO_ACCESS_REPORT at ${(new Date()).toString()}`);
-            // read Parameters
-            // this contains the TagReportData
-            const parametersKeyValue = decode_1.decodeParameter(message.getParameter());
-            if (parametersKeyValue) {
-                parametersKeyValue.forEach((decodedParameters) => {
-                    // read TagReportData Parameter only.
-                    if (decodedParameters.type === parametersConstants_1.default.TagReportData) {
-                        const tag = {};
-                        const subParameters = this.mapSubParameters(decodedParameters);
-                        if (subParameters[parametersConstants_1.default.EPC96]) {
-                            tag.EPC96 = subParameters[parametersConstants_1.default.EPC96].toString('hex');
-                        }
-                        if (subParameters[parametersConstants_1.default.EPCData]) {
-                            tag.EPCData = subParameters[parametersConstants_1.default.EPCData].toString('hex');
-                        }
-                        if (subParameters[parametersConstants_1.default.AntennaID]) {
-                            tag.antennaID = subParameters[parametersConstants_1.default.AntennaID].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.TagSeenCount]) {
-                            tag.tagSeenCount = subParameters[parametersConstants_1.default.TagSeenCount].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.PeakRSSI]) {
-                            tag.peakRSSI = subParameters[parametersConstants_1.default.PeakRSSI].readInt8(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.ROSpecID]) {
-                            tag.roSpecID = subParameters[parametersConstants_1.default.ROSpecID].readUInt32BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.SpecIndex]) {
-                            tag.specIndex = subParameters[parametersConstants_1.default.SpecIndex].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.InventoryParameterSpecID]) {
-                            tag.inventoryParameterSpecID = subParameters[parametersConstants_1.default.InventoryParameterSpecID].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.ChannelIndex]) {
-                            tag.channelIndex = subParameters[parametersConstants_1.default.ChannelIndex].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.C1G2PC]) {
-                            tag.C1G2PC = subParameters[parametersConstants_1.default.C1G2PC].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.C1G2CRC]) {
-                            tag.C1G2CRC = subParameters[parametersConstants_1.default.C1G2CRC].readUInt16BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.AccessSpecID]) {
-                            tag.accessSpecID = subParameters[parametersConstants_1.default.AccessSpecID].readUInt32BE(0);
-                        }
-                        if (subParameters[parametersConstants_1.default.FirstSeenTimestampUTC]) {
-                            // Note: Here is losing precision because JS numbers are defined to be double floats
-                            const firstSeenTimestampUTCus = new Int64(subParameters[parametersConstants_1.default.FirstSeenTimestampUTC], 0);
-                            tag.firstSeenTimestampUTC = firstSeenTimestampUTCus.toNumber(true); // microseconds
-                        }
-                        if (subParameters[parametersConstants_1.default.LastSeenTimestampUTC]) {
-                            // Note: Here is losing precision because JS numbers are defined to be double floats
-                            const lastSeenTimestampUTCus = new Int64(subParameters[parametersConstants_1.default.LastSeenTimestampUTC], 0);
-                            tag.lastSeenTimestampUTC = lastSeenTimestampUTCus.toNumber(true); // microseconds
-                        }
-                        if (subParameters[parametersConstants_1.default.Custom]) {
-                            tag.custom = subParameters[parametersConstants_1.default.Custom].toString('hex');
-                            if (this.radioOperationConfig.enableReadingTid && this.isExtensionsEnabled) {
-                                // parse impinj parameter
-                                const impinjParameterSubtype = subParameters[parametersConstants_1.default.Custom].readUInt32BE(4);
-                                switch (impinjParameterSubtype) {
-                                    case parameters_1.CustomParameterSubType.IMPINJ_SERIALIZED_TID:
-                                        tag.TID = subParameters[parametersConstants_1.default.Custom].toString('hex', 10);
-                                        break;
-                                }
-                            }
-                        }
-                        this.log(`\tEPCData: ${tag.EPCData} \tEPC96: ${tag.EPC96} \tTID: ${tag.TID} \tRead count: ${tag.tagSeenCount} \tAntenna ID: ${tag.antennaID} \tLastSeenTimestampUTC: ${tag.lastSeenTimestampUTC}`);
-                        if (tag.TID || tag.EPCData || tag.EPC96) {
-                            process.nextTick(() => {
-                                this.emit(llrp_1.RfidReaderEvent.DidSeeTag, tag);
-                            });
-                        }
-                    }
-                });
-            }
+            this.emit(llrp_1.RfidReaderEvent.DidSeeTag, tag);
         });
     }
     /**
